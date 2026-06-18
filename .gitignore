@@ -1,0 +1,53 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/**/build/
+!**/src/**/build/
+
+# Kotlin
+.kotlin/
+*.iml
+
+# IDE - IntelliJ / Android Studio
+.idea/*
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+!.idea/runConfigurations/
+*.ipr
+*.iws
+out/
+
+# Android
+local.properties
+/captures
+.externalNativeBuild
+.cxx
+
+# Kotlin/Native & Konan
+konan.txt
+.konan/
+
+# Kotlin Multiplatform Resources
+kotlin-multiplatform-resources/
+
+# iOS / Xcode
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+iosApp/Pods/
+iosApp/build/
+iosApp/.build/
+Podfile.lock
+DerivedData/
+
+# KMP generated Xcode framework artifacts
+xcode-frameworks/
+xcode-check/
+
+# CocoaPods
+Pods/
+
+# OS
+.DS_Store
+Thumbs.db

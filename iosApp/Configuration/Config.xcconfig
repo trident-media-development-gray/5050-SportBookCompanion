@@ -1,0 +1,4 @@
+TEAM_ID=
+BUNDLE_ID=com.sample.kmp
+APP_NAME=App Name 2 (iOS)
+KOTLIN_FRAMEWORK_BUILD_TYPE=Debug

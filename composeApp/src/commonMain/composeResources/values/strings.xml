@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- FALLBACK: used if no platform-specific override exists -->
+    <string name="app_name">Sample KMP App</string>
+    <string name="greeting">Hello from shared code!</string>
+</resources>
