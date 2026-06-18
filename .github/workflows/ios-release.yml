@@ -1,0 +1,72 @@
+name: iOS App Store Release
+
+# Manual only — never on push. The TMDT "Trigger build" step dispatches this
+# via `gh workflow run`, so a code push alone never starts a release.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    # fastlane requires a UTF-8 locale; without it match/cert crashes after
+    # creating the cert (cert_checker.rb: "invalid byte sequence in US-ASCII").
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          # Reads .ruby-version (committed) so CI uses the same Ruby the
+          # Gemfile.lock was resolved with — no version-mismatch failures.
+          ruby-version: .ruby-version
+          bundler-cache: true
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # Exact pin, matching the locally verified toolchain — a bare '26'
+          # floats with the runner image and has broken altool before.
+          xcode-version: '26.2'
+
+      - name: Create CI keychain
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          security create-keychain -p "$KEYCHAIN_PASSWORD" fastlane.keychain
+          security default-keychain -s fastlane.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" fastlane.keychain
+          security set-keychain-settings -t 3600 -u fastlane.keychain
+
+      - name: Deploy to App Store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          MATCH_KEYCHAIN_NAME: fastlane.keychain
+          MATCH_KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          bundle exec fastlane ios release
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gym-build-log
+          path: ~/Library/Logs/gym/*.log

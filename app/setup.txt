@@ -1,3 +1,0 @@
-Resource obfuscation: 1
-Strings obfuscation: 0
-Code obfuscation: 2
