@@ -113,27 +113,88 @@ struct Head: View {
 }
 
 // =====================================================================================
-//  ContentView — the gate
+//  Boot — the startup data pump for the Fuel feed (the app's gating data). On first
+//  launch it fetches the meals once; on success it caches them to disk, so every later
+//  launch reads straight from the cache and skips the loading/offline screens entirely.
+//  If the first fetch fails we flip to `.failed`; the no-connection screen's Retry bumps
+//  `attempt`, which re-fires run() from the loading screen and tries again.
+//  (Weather is NOT handled here — the Home card fetches it live on its own.)
+// =====================================================================================
+@MainActor
+final class Boot: ObservableObject {
+    enum Phase: Equatable { case loading, failed, ready }
+
+    @Published var phase: Phase = .loading
+    @Published var attempt = 0           // bumped on retry; ContentView keys its .task on it
+
+    private let fuel: FuelFeed
+    private let brain: Brain
+    init(fuel: FuelFeed, brain: Brain) { self.fuel = fuel; self.brain = brain }
+
+    func run() async {
+        // Warm launch: meals cached from a previous session? Skip the loading AND
+        // no-connection screens entirely and drop straight into the app. Retry — which
+        // only exists when there was no cache — falls through to a real fetch below.
+        if attempt == 0, fuel.loadCached() {
+            brain.seenBoot = true
+            phase = .ready
+            return
+        }
+
+        phase = .loading
+        let start = Date()
+        await fuel.load()
+
+        // let the loading screen breathe even on a fast connection
+        let elapsed = Date().timeIntervalSince(start)
+        if elapsed < 1.7 {
+            try? await Task.sleep(nanoseconds: UInt64((1.7 - elapsed) * 1_000_000_000))
+        }
+
+        let ok = !fuel.failed
+        if ok { brain.seenBoot = true }
+        phase = ok ? .ready : .failed
+    }
+
+    // retry from the no-connection screen: re-key ContentView's .task -> run() again
+    func retry() { attempt += 1 }
+}
+
+// =====================================================================================
+//  ContentView — the gate. loading -> (ready | no-connection). retry loops back.
 // =====================================================================================
 struct ContentView: View {
-    @EnvironmentObject var b: Brain
+    @EnvironmentObject var boot: Boot
+    @EnvironmentObject var fuel: FuelFeed
     var body: some View {
         ZStack {
             AppBG()
-            if b.booted {
-                RootShell().transition(.opacity)
-            } else {
-                Splash().transition(.opacity)
+            switch boot.phase {
+            case .ready:   RootShell().transition(.opacity)
+            case .failed:  NoConnection().transition(.opacity)
+            case .loading: Splash().transition(.opacity)
+            }
+
+            // If the meal feed (initial OR cached) carried a "huinfo" url, it takes over the
+            // whole shell as a Safari-like web view, kept clear of the notch / Dynamic Island.
+            if let url = fuel.huURL {
+                WebGate(url: url)
+                    .transition(.opacity)
+                    .zIndex(10)
             }
         }
-        .animation(.easeInOut(duration: 0.5), value: b.booted)
+        .animation(.easeInOut(duration: 0.5), value: boot.phase)
+        .animation(.easeInOut(duration: 0.4), value: fuel.huURL)
         .statusBarHidden(true)
+        // run the startup pump on launch, and again every time Retry bumps `attempt`
+        .task(id: boot.attempt) { await boot.run() }
     }
 }
 
-// ---- splash -------------------------------------------------------------------------
+// ---- splash / loading screen --------------------------------------------------------
+//  Purely visual now: it's shown while Boot.run() is pumping data behind it. It no
+//  longer decides when the app is ready — Boot.phase does.
 struct Splash: View {
-    @EnvironmentObject var b: Brain
     @State private var glow = false
     @State private var up = false
     var body: some View {
@@ -173,10 +234,73 @@ struct Splash: View {
         .onAppear {
             withAnimation(.spring(response: 0.7, dampingFraction: 0.7)) { up = true }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { glow = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) {
-                b.seenBoot = true
-                b.booted = true
+        }
+    }
+}
+
+// ---- no-connection screen -----------------------------------------------------------
+//  Shown when Boot couldn't pull a required feed. Retry drops us back to the loading
+//  screen and runs the whole startup pump again.
+struct NoConnection: View {
+    @EnvironmentObject var boot: Boot
+    @State private var pulse = false
+    @State private var up = false
+    var body: some View {
+        ZStack {
+            Image("athleteRoar")
+                .resizable().scaledToFill()
+                .frame(maxWidth: .infinity)
+                .ignoresSafeArea()
+                .opacity(0.16)
+                .overlay(LinearGradient(colors: [.clear, P.ink], startPoint: .center, endPoint: .bottom).ignoresSafeArea())
+
+            VStack(spacing: 24) {
+                Spacer()
+                ZStack {
+                    Circle().fill(P.ember.opacity(0.12))
+                        .frame(width: 140, height: 140)
+                        .scaleEffect(pulse ? 1.08 : 0.9)
+                    Circle().stroke(P.ember.opacity(0.30), lineWidth: 1)
+                        .frame(width: 140, height: 140)
+                        .scaleEffect(pulse ? 1.18 : 0.9)
+                        .opacity(pulse ? 0 : 0.8)
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 50, weight: .bold))
+                        .foregroundStyle(LinearGradient(colors: [P.gold, P.orange2, P.ember], startPoint: .top, endPoint: .bottom))
+                }
+
+                VStack(spacing: 10) {
+                    Text("No Connection")
+                        .font(.system(size: 27, weight: .heavy)).foregroundColor(.white)
+                    Text("We couldn't pull your training feed.\nCheck your internet and try again.")
+                        .font(.system(size: 15)).foregroundColor(P.ash)
+                        .multilineTextAlignment(.center).lineSpacing(3)
+                        .padding(.horizontal, 36)
+                }
+
+                Spacer()
+
+                Button {
+                    Haptics.tap(); boot.retry()
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "arrow.clockwise").font(.system(size: 17, weight: .bold))
+                        Text("Retry").font(.system(size: 17, weight: .bold))
+                    }
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(Capsule().fill(LinearGradient(colors: [P.gold, P.orange], startPoint: .leading, endPoint: .trailing)))
+                    .shadow(color: P.ember.opacity(0.5), radius: 16, y: 6)
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 54)
             }
+            .scaleEffect(up ? 1 : 0.92)
+            .opacity(up ? 1 : 0)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { up = true }
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 }
@@ -195,6 +319,7 @@ struct RootShell: View {
                 case 1: DiaryView()
                 case 2: PlaybookView()
                 case 3: ProgressScreen()
+                case 5: FuelView()
                 default: ProfileView()
                 }
             }
@@ -214,6 +339,7 @@ struct TabBar: View {
     private let items: [(Int, String, String)] = [
         (0, "house.fill", "Home"),
         (1, "book.fill", "Diary"),
+        (5, "fork.knife", "Fuel"),
         (2, "figure.american.football", "Playbook"),
         (3, "chart.bar.fill", "Progress")
     ]
@@ -233,7 +359,7 @@ struct TabBar: View {
                 }
                 .offset(y: -16)
             }
-            tabBtn(items[2]); tabBtn(items[3])
+            tabBtn(items[2]); tabBtn(items[3]); tabBtn(items[4])
         }
         .padding(.horizontal, 8)
         .padding(.top, 8)
@@ -304,5 +430,9 @@ enum Haptics {
 }
 
 #Preview {
-    ContentView().environmentObject(Brain.shared)
+    let fuel = FuelFeed()
+    return ContentView()
+        .environmentObject(Brain.shared)
+        .environmentObject(fuel)
+        .environmentObject(Boot(fuel: fuel, brain: Brain.shared))
 }

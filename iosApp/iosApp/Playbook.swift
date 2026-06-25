@@ -86,6 +86,7 @@ struct DrillDetail: View {
     var d: Drill
     @State private var logged = false
     @State private var full = false
+    @State private var timerOpen = false
 
     private let catArt = ["goalpost", "stars", "playbook", "field", "playbook", "helmet"]
 
@@ -137,6 +138,17 @@ struct DrillDetail: View {
                 }
                 .padding(.top, 4)
 
+                // run an interval timer for this drill
+                Button { timerOpen = true } label: {
+                    HStack {
+                        Image(systemName: "timer")
+                        Text("Run interval timer")
+                    }
+                    .font(.system(size: 16, weight: .bold)).foregroundColor(P.orange)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(Capsule().fill(P.orange.opacity(0.12)).overlay(Capsule().stroke(P.orange.opacity(0.35), lineWidth: 1)))
+                }
+
                 Color.clear.frame(height: 40)
             }
             .padding(.horizontal, 16)
@@ -144,5 +156,6 @@ struct DrillDetail: View {
         .scrollIndicators(.hidden)
         .background(AppBG())
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $timerOpen) { DrillTimer() }
     }
 }

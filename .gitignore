@@ -30,3 +30,6 @@ fastlane/.env
 fastlane/*.p8
 vendor/bundle/
 .bundle/
+
+# JetBrains IDE
+.idea/

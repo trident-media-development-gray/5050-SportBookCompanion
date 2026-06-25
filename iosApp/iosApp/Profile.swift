@@ -13,11 +13,27 @@ struct ProfileView: View {
 
                 // ---- avatar / identity ----
                 VStack(spacing: 12) {
-                    ZStack {
-                        Circle().fill(RadialGradient(colors: [P.orange.opacity(0.35), .clear], center: .center, startRadius: 4, endRadius: 70))
-                            .frame(width: 140, height: 140)
-                        Image("helmet").resizable().scaledToFit().frame(width: 120, height: 120)
-                            .shadow(color: P.ember.opacity(0.5), radius: 16)
+                    PhotoPicker(hasImage: b.avatar != nil,
+                                onPick: { b.setAvatar($0) },
+                                onRemove: b.avatar == nil ? nil : { b.clearAvatar() }) {
+                        ZStack {
+                            Circle().fill(RadialGradient(colors: [P.orange.opacity(0.35), .clear], center: .center, startRadius: 4, endRadius: 70))
+                                .frame(width: 140, height: 140)
+                            if let img = ImageStore.load(b.avatar) {
+                                Image(uiImage: img).resizable().scaledToFill()
+                                    .frame(width: 120, height: 120).clipShape(Circle())
+                                    .overlay(Circle().stroke(P.orange.opacity(0.6), lineWidth: 2))
+                                    .shadow(color: P.ember.opacity(0.5), radius: 16)
+                            } else {
+                                Image("helmet").resizable().scaledToFit().frame(width: 120, height: 120)
+                                    .shadow(color: P.ember.opacity(0.5), radius: 16)
+                            }
+                            // little camera badge bottom-right
+                            Circle().fill(P.orange).frame(width: 34, height: 34)
+                                .overlay(Image(systemName: "camera.fill").font(.system(size: 14, weight: .bold)).foregroundColor(.black))
+                                .overlay(Circle().stroke(P.ink, lineWidth: 3))
+                                .offset(x: 44, y: 44)
+                        }
                     }
                     TextField("", text: $b.athlete, prompt: Text("Your name").foregroundColor(P.ashDim))
                         .multilineTextAlignment(.center)
@@ -75,7 +91,7 @@ struct ProfileView: View {
                 // ---- about ----
                 Panel {
                     VStack(alignment: .leading, spacing: 12) {
-                        infoRow("Version", "1.0 (1)")
+                        infoRow("Version", "1.1 (2)")
                         Divider().overlay(P.stroke)
                         infoRow("Bundle", "sport.diary.companion.iosapp")
                         Divider().overlay(P.stroke)

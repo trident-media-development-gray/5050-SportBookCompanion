@@ -5,6 +5,8 @@ import SwiftUI
 // =====================================================================================
 struct HomeView: View {
     @EnvironmentObject var b: Brain
+    @State private var showRecords = false
+    @State private var showTimer = false
 
     // the "smart" suggestion: whichever training kind you've neglected most this app's life
     private var suggestion: Drill {
@@ -66,6 +68,15 @@ struct HomeView: View {
                         }
                         Spacer(minLength: 0)
                     }
+                }
+
+                // ---- training conditions (live weather) ----
+                ConditionsCard()
+
+                // ---- quick actions ----
+                HStack(spacing: 12) {
+                    quickBtn("trophy.fill", "Records", P.gold) { showRecords = true }
+                    quickBtn("timer", "Drill Timer", P.orange) { showTimer = true }
                 }
 
                 // ---- today's focus (suggested drill) ----
@@ -134,6 +145,21 @@ struct HomeView: View {
             .padding(.horizontal, 16)
         }
         .scrollIndicators(.hidden)
+        .sheet(isPresented: $showRecords) { RecordsView() }
+        .sheet(isPresented: $showTimer) { DrillTimer() }
+    }
+
+    private func quickBtn(_ icon: String, _ title: String, _ tint: Color, _ act: @escaping () -> Void) -> some View {
+        Button { Haptics.tap(); act() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 18, weight: .bold)).foregroundColor(tint)
+                Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 16).fill(P.panel).overlay(RoundedRectangle(cornerRadius: 16).stroke(P.stroke, lineWidth: 1)))
+        }
     }
 
     private func weekdayLine() -> String {
@@ -165,6 +191,11 @@ struct SessRow: View {
                 }
             }
             Spacer(minLength: 0)
+            if let img = ImageStore.load(s.photo) {
+                Image(uiImage: img).resizable().scaledToFill()
+                    .frame(width: 38, height: 38).clipShape(RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(P.stroke, lineWidth: 1))
+            }
             Text(Brain.moodFace[s.mood]).font(.system(size: 22))
         }
         .padding(12)

@@ -113,6 +113,8 @@ struct AddSessionView: View {
     @State private var when: Date
     @State private var capWarn = false
     @State private var capMsg = ""
+    @State private var photoImg: UIImage?    // live image shown in the editor
+    @State private var photoDirty = false    // did the user change the photo this session?
 
     init(editing: Sess?) {
         self.editing = editing
@@ -124,6 +126,7 @@ struct AddSessionView: View {
         _note      = State(initialValue: editing?.note ?? "")
         _tagText   = State(initialValue: (editing?.tags ?? []).joined(separator: ", "))
         _when      = State(initialValue: Date(timeIntervalSince1970: editing?.t ?? Date().timeIntervalSince1970))
+        _photoImg  = State(initialValue: ImageStore.load(editing?.photo))
     }
 
     var body: some View {
@@ -215,6 +218,31 @@ struct AddSessionView: View {
                             .background(RoundedRectangle(cornerRadius: 12).fill(P.panel2))
                         }
 
+                        // photo
+                        block("PHOTO") {
+                            PhotoPicker(hasImage: photoImg != nil,
+                                        onPick: { photoImg = $0; photoDirty = true },
+                                        onRemove: photoImg == nil ? nil : { photoImg = nil; photoDirty = true }) {
+                                if let img = photoImg {
+                                    Image(uiImage: img).resizable().scaledToFill()
+                                        .frame(height: 160).frame(maxWidth: .infinity).clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .overlay(alignment: .topTrailing) {
+                                            Image(systemName: "pencil.circle.fill").font(.system(size: 26))
+                                                .foregroundStyle(.white, P.orange).padding(8)
+                                        }
+                                } else {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "camera.fill").font(.system(size: 22, weight: .bold)).foregroundColor(P.orange)
+                                        Text("Add a photo").font(.system(size: 13, weight: .semibold)).foregroundColor(P.ash)
+                                    }
+                                    .frame(maxWidth: .infinity).frame(height: 90)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(P.panel2)
+                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(P.stroke, style: StrokeStyle(lineWidth: 1, dash: [5]))))
+                                }
+                            }
+                        }
+
                         // tags
                         block("TAGS (comma separated)") {
                             TextField("", text: $tagText, prompt: Text("routes, legs, pr").foregroundColor(P.ashDim))
@@ -285,14 +313,22 @@ struct AddSessionView: View {
             return
         }
 
+        // resolve the photo: only touch disk if the user changed it this session
+        var photoName = editing?.photo
+        if photoDirty {
+            ImageStore.delete(editing?.photo)                       // drop the old jpeg
+            photoName = photoImg.flatMap { ImageStore.save($0) }    // save the new one (if any)
+        }
+
         if var e = editing {
             e.kind = kind; e.mins = Int(mins); e.intensity = intensity; e.rpe = Int(rpe)
             e.mood = mood; e.note = note; e.tags = tags; e.t = when.timeIntervalSince1970
+            e.photo = photoName
             b.update(e)
         } else {
             b.add(Sess(t: when.timeIntervalSince1970, kind: kind, mins: Int(mins),
                        intensity: intensity, rpe: Int(rpe), mood: mood, note: note,
-                       drill: nil, tags: tags))
+                       drill: nil, tags: tags, photo: photoName))
         }
         dismiss()
     }
